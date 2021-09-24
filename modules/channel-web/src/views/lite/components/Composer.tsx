@@ -3,9 +3,10 @@ import { inject, observer } from 'mobx-react'
 import React from 'react'
 import { FormattedMessage, InjectedIntlProps, injectIntl } from 'react-intl'
 
-import { RecordSpeechToText } from '../../../../../../src/bp/ui-shared-lite/SpeechToTextButton'
-import ToolTip from '../../../../../../src/bp/ui-shared-lite/ToolTip'
+import ToolTip from '../../../../../../packages/ui-shared-lite/ToolTip'
 import { RootStore, StoreDef } from '../store'
+
+import VoiceRecorder from './VoiceRecorder'
 
 class Composer extends React.Component<ComposerProps, { isRecording: boolean }> {
   private textInput: React.RefObject<HTMLTextAreaElement>
@@ -59,31 +60,27 @@ class Composer extends React.Component<ComposerProps, { isRecording: boolean }> 
   handleMessageChanged = e => this.props.updateMessage(e.target.value)
 
   isLastMessageFromBot = (): boolean => {
-    return (
-      this.props.currentConversation &&
-      this.props.currentConversation.messages &&
-      this.props.currentConversation.messages.length &&
-      !this.props.currentConversation.messages.slice(-1).pop().userId
-    )
+    return this.props.currentConversation?.messages?.slice(-1)?.pop()?.authorId === undefined
   }
 
-  onVoiceStart() {
-    this.textInput.current.focus()
+  onVoiceStart = () => {
     this.setState({ isRecording: true })
   }
 
-  onVoiceEnd() {
+  onVoiceEnd = async (voice: Buffer, ext: string) => {
     this.setState({ isRecording: false })
+
+    await this.props.sendVoiceMessage(voice, ext)
   }
 
-  onVoiceNotAvailable() {
-    console.log(
-      'Voice input is not available on this browser. Please check https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API for compatibility'
+  onVoiceNotAvailable = () => {
+    console.warn(
+      'Voice input is not available on this browser. Please check https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder for compatibility'
     )
   }
 
   render() {
-    if(this.props.composerHidden) {
+    if (this.props.composerHidden) {
       return null
     }
 
@@ -119,14 +116,26 @@ class Composer extends React.Component<ComposerProps, { isRecording: boolean }> 
           </label>
           <div className={'bpw-send-buttons'}>
             {this.props.enableVoiceComposer && (
-              <RecordSpeechToText
+              <VoiceRecorder
                 onStart={this.onVoiceStart}
                 onDone={this.onVoiceEnd}
                 onNotAvailable={this.onVoiceNotAvailable}
-                onText={text => this.props.updateMessage(text)}
               />
             )}
-            <ToolTip childId="btn-send" content={this.props.isEmulator ? 'Interact with your chatbot' : 'Send Message'}>
+            <ToolTip
+              childId="btn-send"
+              content={
+                this.props.isEmulator
+                  ? this.props.intl.formatMessage({
+                      id: 'composer.interact',
+                      defaultMessage: 'Interact with your chatbot'
+                    })
+                  : this.props.intl.formatMessage({
+                      id: 'composer.sendMessage',
+                      defaultMessage: 'Send Message'
+                    })
+              }
+            >
               <button
                 className={'bpw-send-button'}
                 disabled={!this.props.message.length || this.props.composerLocked || this.state.isRecording}
@@ -157,6 +166,7 @@ export default inject(({ store }: { store: RootStore }) => ({
   recallHistory: store.composer.recallHistory,
   intl: store.intl,
   sendMessage: store.sendMessage,
+  sendVoiceMessage: store.sendVoiceMessage,
   botName: store.botName,
   setFocus: store.view.setFocus,
   focusedArea: store.view.focusedArea,
@@ -166,7 +176,8 @@ export default inject(({ store }: { store: RootStore }) => ({
   enableResetSessionShortcut: store.config.enableResetSessionShortcut,
   resetSession: store.resetSession,
   currentConversation: store.currentConversation,
-  isEmulator: store.isEmulator
+  isEmulator: store.isEmulator,
+  preferredLanguage: store.preferredLanguage
 }))(injectIntl(observer(Composer)))
 
 type ComposerProps = {
@@ -182,6 +193,7 @@ type ComposerProps = {
     | 'intl'
     | 'focusedArea'
     | 'sendMessage'
+    | 'sendVoiceMessage'
     | 'focusPrevious'
     | 'focusNext'
     | 'recallHistory'
@@ -194,4 +206,5 @@ type ComposerProps = {
     | 'enableResetSessionShortcut'
     | 'enableVoiceComposer'
     | 'currentConversation'
+    | 'preferredLanguage'
   >

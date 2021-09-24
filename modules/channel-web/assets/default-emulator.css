@@ -1,4 +1,4 @@
-@import url('../../ui-studio/public/external/font-roboto.css');
+@import url('../../studio/ui/public/external/font-roboto.css');
 
 /* To make sure that we don't apply style that might break the default style of IE */
 @supports not (-ms-high-contrast: none) {
@@ -472,8 +472,8 @@
     padding: 0.5rem 0.75rem;
   }
 
-  .bpw-bubble-file a {
-    display: block;
+  .bpw-bubble-file a,
+  .bpw-bubble-image a {
     cursor: pointer;
     border-top-left-radius: inherit;
     border-top-right-radius: inherit;
@@ -481,8 +481,9 @@
     border-bottom-left-radius: inherit;
   }
 
-  .bpw-bubble-file a img {
-    max-height: 240px;
+  .bpw-bubble-image a img,
+  .bpw-bubble-audio audio,
+  .bpw-bubble-video video {
     max-width: 100%;
     border-top-left-radius: inherit;
     border-top-right-radius: inherit;
@@ -693,6 +694,9 @@
     color: #9a9a9a;
     position: absolute;
     right: 0;
+  }
+  .bpw-keyboard-quick_reply-dropdown {
+    margin: 0.2rem 0.5rem;
   }
 
   .bpw-composer {
@@ -1186,4 +1190,50 @@
 .bpw-emulator .bpw-chat-quick_reply-dropdown {
   margin-top: 5px;
   zoom: 0.8; /* This feature is non-standard */
+}
+
+.bpw-rtl .bpw-chat-bubble {
+  direction: rtl;
+}
+.bpw-rtl .bpw-composer {
+  padding: var(--spacing-x-large) var(--spacing-large) var(--spacing-x-large) 50px;
+}
+
+.bpw-rtl .bpw-composer textarea {
+  direction: rtl;
+}
+
+.bpw-rtl .bpw-send-button {
+  position: absolute;
+  left: -45px;
+  top: 50%;
+  transform: translate(0, -50%);
+  border: none;
+  border-radius: 5px;
+  background: #fff;
+  padding: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.bpw-rtl.bpw-botinfo-container .bpw-botinfo-terms {
+  text-align: right;
+}
+
+.bpw-rtl .bpw-date-container {
+  direction: rtl;
+}
+
+.bpw-rtl .bpw-card-container {
+  text-align: right;
+  direction: rtl;
+}
+
+.bpw-rtl .bpw-keyboard-quick_reply-dropdown {
+  direction: rtl;
+}
+
+.bpw-msg-hovering:hover {
+  cursor: pointer;
 }

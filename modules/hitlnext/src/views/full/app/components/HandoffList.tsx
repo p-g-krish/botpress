@@ -5,18 +5,19 @@ import React, { FC, Fragment, useContext, useEffect, useState } from 'react'
 
 import { IHandoff } from '../../../../types'
 import CasesIcon from '../../Icons/CasesIcon'
+import style from '../../style.scss'
 import { Context } from '../Store'
 
 import HandoffItem from './HandoffItem'
 import HandoffListHeader, { FilterType, SortType } from './HandoffListHeader'
 
-import style from '../../style.scss'
 interface Props {
+  tags: string[]
   handoffs: object
   loading: boolean
 }
 
-const HandoffList: FC<Props> = ({ handoffs, loading }) => {
+const HandoffList: FC<Props> = ({ tags, handoffs, loading }) => {
   const { state, dispatch } = useContext(Context)
 
   const [items, setItems] = useState<IHandoff[]>([])
@@ -24,7 +25,8 @@ const HandoffList: FC<Props> = ({ handoffs, loading }) => {
     unassigned: true,
     assignedMe: true,
     assignedOther: false,
-    resolved: false
+    resolved: false,
+    tags: []
   })
   const [sortOption, setSortOption] = useState<SortType>('mostRecent')
 
@@ -34,6 +36,12 @@ const HandoffList: FC<Props> = ({ handoffs, loading }) => {
       assignedMe: item.status === 'assigned' && item.agentId === state.currentAgent?.agentId,
       assignedOther: item.status === 'assigned' && item.agentId !== state.currentAgent?.agentId,
       resolved: item.status === 'resolved'
+    }
+
+    if (filterOptions.tags.length) {
+      const tagCondition = item.tags?.some(tag => filterOptions.tags.indexOf(tag) >= 0)
+
+      Object.keys(conditions).forEach(key => (conditions[key] = conditions[key] && tagCondition))
     }
 
     return _.some(_.pickBy(conditions), (value, key) => filterOptions[key])
@@ -78,6 +86,7 @@ const HandoffList: FC<Props> = ({ handoffs, loading }) => {
     <Fragment>
       <HandoffListHeader
         filterOptions={filterOptions}
+        tags={tags}
         sortOption={sortOption}
         setFilterOptions={setFilterOptions}
         setSortOption={setSortOption}

@@ -1,2 +1,1 @@
-import '../../../../../../../src/bp/sdk/botpress'
-export * from '../../../../../../../src/bp/common/nlu/engine'
+import '../../../../../../../packages/bp/src/sdk/botpress'

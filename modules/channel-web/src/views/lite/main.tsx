@@ -1,4 +1,5 @@
 import classnames from 'classnames'
+import debounce from 'lodash/debounce'
 import set from 'lodash/set'
 import { observe } from 'mobx'
 import { inject, observer } from 'mobx-react'
@@ -12,20 +13,18 @@ import constants from './core/constants'
 import BpSocket from './core/socket'
 import ChatIcon from './icons/Chat'
 import { RootStore, StoreDef } from './store'
-import { Config, Message } from './typings'
+import { Config, Message, Overrides, uuid } from './typings'
 import { checkLocationOrigin, initializeAnalytics, isIE, trackMessage, trackWebchatState } from './utils'
 
-const _values = obj => Object.keys(obj).map(x => obj[x])
+const _values = (obj: Overrides) => Object.keys(obj).map(x => obj[x])
 
 class Web extends React.Component<MainProps> {
   private config: Config
   private socket: BpSocket
   private parentClass: string
   private hasBeenInitialized: boolean = false
-
-  state = {
-    played: false
-  }
+  private audio: HTMLAudioElement
+  private lastMessageId: uuid
 
   constructor(props) {
     super(props)
@@ -35,6 +34,7 @@ class Web extends React.Component<MainProps> {
   }
 
   async componentDidMount() {
+    this.audio = new Audio(`${window.ROOT_PATH}/assets/modules/channel-web/notification.mp3`)
     this.props.store.setIntlProvider(this.props.intl)
     window.store = this.props.store
 
@@ -51,7 +51,7 @@ class Web extends React.Component<MainProps> {
       }
     })
 
-    await this.initialize()
+    await this.load()
     await this.initializeIfChatDisplayed()
 
     this.props.setLoadingCompleted()
@@ -62,8 +62,10 @@ class Web extends React.Component<MainProps> {
   }
 
   componentDidUpdate() {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    this.initializeIfChatDisplayed()
+    if (this.config) {
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      this.initializeIfChatDisplayed()
+    }
   }
 
   async initializeIfChatDisplayed() {
@@ -83,7 +85,7 @@ class Web extends React.Component<MainProps> {
     }
   }
 
-  async initialize() {
+  async load() {
     this.config = this.extractConfig()
 
     if (this.config.exposeStore) {
@@ -110,11 +112,18 @@ class Web extends React.Component<MainProps> {
     window.parent?.postMessage({ type, value, chatId: this.config.chatId }, '*')
   }
 
-  extractConfig() {
+  extractConfig(): Config {
+    const decodeIfRequired = (options: string) => {
+      try {
+        return decodeURIComponent(options)
+      } catch {
+        return options
+      }
+    }
     const { options, ref } = queryString.parse(location.search)
-    const { config } = JSON.parse(decodeURIComponent(options || '{}'))
+    const { config } = JSON.parse(decodeIfRequired(options || '{}'))
 
-    const userConfig = Object.assign({}, constants.DEFAULT_CONFIG, config)
+    const userConfig: Config = Object.assign({}, constants.DEFAULT_CONFIG, config)
     userConfig.reference = config.ref || ref
 
     this.props.updateConfig(userConfig, this.props.bp)
@@ -136,7 +145,7 @@ class Web extends React.Component<MainProps> {
     await this.socket.waitForUserId()
   }
 
-  loadOverrides(overrides) {
+  loadOverrides(overrides: Overrides) {
     try {
       for (const override of _values(overrides)) {
         override.map(({ module }) => this.props.bp.loadModuleView(module, true))
@@ -152,8 +161,8 @@ class Web extends React.Component<MainProps> {
         return
       }
 
-      await this.socket.changeUserId(data.newValue)
-      await this.socket.setup()
+      this.socket.changeUserId(data.newValue)
+      this.socket.setup()
       await this.socket.waitForUserId()
       await this.props.initializeChat()
     })
@@ -172,9 +181,7 @@ class Web extends React.Component<MainProps> {
   }
 
   isCurrentConversation = (event: Message) => {
-    return (
-      !this.props.config?.conversationId || Number(this.props.config.conversationId) === Number(event.conversationId)
-    )
+    return !this.props.config?.conversationId || this.props.config.conversationId === event.conversationId
   }
 
   handleIframeApi = async ({ data: { action, payload } }) => {
@@ -184,6 +191,8 @@ class Web extends React.Component<MainProps> {
       this.props.mergeConfig(payload)
     } else if (action === 'sendPayload') {
       await this.props.sendData(payload)
+    } else if (action === 'change-user-id') {
+      this.props.store.setUserId(payload)
     } else if (action === 'event') {
       const { type, text } = payload
 
@@ -199,6 +208,8 @@ class Web extends React.Component<MainProps> {
       } else if (type === 'message') {
         trackMessage('sent')
         await this.props.sendMessage(text)
+      } else if (type === 'loadConversation') {
+        await this.props.store.fetchConversation(payload.conversationId)
       } else if (type === 'toggleBotInfo') {
         this.props.toggleBotInfo()
       } else {
@@ -214,7 +225,7 @@ class Web extends React.Component<MainProps> {
   }
 
   handleNewMessage = async (event: Message) => {
-    if (event.payload?.type === 'visit' || event.message_type === 'visit') {
+    if (event.payload?.type === 'visit') {
       // don't do anything, it's the system message
       return
     }
@@ -234,6 +245,11 @@ class Web extends React.Component<MainProps> {
     }
 
     this.handleResetUnreadCount()
+
+    if (!['session_reset'].includes(event.payload.type) && event.id !== this.lastMessageId) {
+      this.lastMessageId = event.id
+      await this.props.store.loadEventInDebugger(event.id)
+    }
   }
 
   handleTyping = async (event: Message) => {
@@ -245,7 +261,7 @@ class Web extends React.Component<MainProps> {
     await this.props.updateTyping(event)
   }
 
-  handleDataMessage = event => {
+  handleDataMessage = (event: Message) => {
     if (!event || !event.payload) {
       return
     }
@@ -258,26 +274,19 @@ class Web extends React.Component<MainProps> {
     this.props.updateBotUILanguage(language)
   }
 
-  async playSound() {
+  playSound = debounce(async () => {
     // Preference for config object
     const disableNotificationSound =
       this.config.disableNotificationSound === undefined
         ? this.props.config.disableNotificationSound
         : this.config.disableNotificationSound
 
-    if (this.state.played || disableNotificationSound) {
+    if (disableNotificationSound || this.audio.readyState < 2) {
       return
     }
 
-    const audio = new Audio(`${window.ROOT_PATH}/assets/modules/channel-web/notification.mp3`)
-    await audio.play()
-
-    this.setState({ played: true })
-
-    setTimeout(() => {
-      this.setState({ played: false })
-    }, constants.MIN_TIME_BETWEEN_SOUNDS)
-  }
+    await this.audio.play()
+  }, constants.MIN_TIME_BETWEEN_SOUNDS)
 
   isLazySocket() {
     if (this.config.lazySocket !== undefined) {

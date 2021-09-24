@@ -7,6 +7,7 @@ import { createApi } from '../api'
 import { registerRouter, removeRouter } from './api'
 import { NLUApplication } from './application'
 import { bootStrap } from './bootstrap'
+import { initDatabase } from './db'
 import dialogConditions from './dialog-conditions'
 import { registerMiddlewares, removeMiddlewares } from './middlewares'
 
@@ -19,22 +20,26 @@ class AppNotInitializedError extends Error {
 let app: NLUApplication | undefined
 
 const onServerStarted = async (bp: typeof sdk) => {
-  app = await bootStrap(bp)
-  await registerMiddlewares(bp, app)
+  await initDatabase(bp)
 }
 
 const onServerReady = async (bp: typeof sdk) => {
-  if (!app) {
-    throw new AppNotInitializedError()
+  app = await bootStrap(bp)
+  await registerMiddlewares(bp, app)
+
+  if (app) {
+    await registerRouter(bp, app)
+    await app.resumeTrainings()
+  } else {
+    return bp.logger.warn('NLU module is not initialized')
   }
-  await registerRouter(bp, app)
-  await app.resumeTrainings()
 }
 
 const onBotMount = async (bp: typeof sdk, botId: string) => {
   if (!app) {
-    throw new AppNotInitializedError()
+    return bp.logger.warn('NLU module is not initialized')
   }
+
   const botConfig = await bp.bots.getBotById(botId)
   if (!botConfig) {
     throw new Error(`No config found for bot ${botId}`)
@@ -44,9 +49,13 @@ const onBotMount = async (bp: typeof sdk, botId: string) => {
 
 const onBotUnmount = async (bp: typeof sdk, botId: string) => {
   if (!app) {
-    throw new AppNotInitializedError()
+    return bp.logger.warn(`Bot ${botId} is not mounted`)
   }
-  return app.unmountBot(botId)
+  try {
+    await app.unmountBot(botId)
+  } catch (err) {
+    bp.logger.warn(`Error while unloading bot ${botId}: ${err}`)
+  }
 }
 
 const onModuleUnmount = async (bp: typeof sdk) => {
@@ -59,31 +68,6 @@ const onModuleUnmount = async (bp: typeof sdk) => {
   await app.teardown()
 }
 
-const onTopicChanged = async (bp: typeof sdk, botId: string, oldName?: string, newName?: string) => {
-  const isRenaming = !!(oldName && newName)
-  const isDeleting = !newName
-
-  if (!isRenaming && !isDeleting) {
-    return
-  }
-
-  const api = await createApi(bp, botId)
-  const intentDefs = await api.fetchIntentsWithQNAs()
-
-  for (const intentDef of intentDefs) {
-    const ctxIdx = intentDef.contexts.indexOf(oldName as string)
-    if (ctxIdx !== -1) {
-      intentDef.contexts.splice(ctxIdx, 1)
-
-      if (isRenaming) {
-        intentDef.contexts.push(newName!)
-      }
-
-      await api.updateIntent(intentDef.name, intentDef)
-    }
-  }
-}
-
 const entryPoint: sdk.ModuleEntryPoint = {
   onServerStarted,
   onServerReady,
@@ -91,7 +75,6 @@ const entryPoint: sdk.ModuleEntryPoint = {
   onBotUnmount,
   onModuleUnmount,
   dialogConditions,
-  onTopicChanged,
   definition: {
     name: 'nlu',
     noInterface: true

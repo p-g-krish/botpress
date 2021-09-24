@@ -1,5 +1,4 @@
 import { IO, NLU as SDKNLU } from 'botpress/sdk'
-import * as NLU from 'common/nlu/engine'
 
 export type I<C> = {
   [k in keyof C]: C[k]
@@ -10,6 +9,13 @@ export interface BotConfig {
   defaultLanguage: string
   languages: string[]
   nluSeed?: number
+  cloud?: CloudConfig
+}
+
+export interface CloudConfig {
+  oauthUrl: string
+  clientId: string
+  clientSecret: string
 }
 
 export interface BotDefinition {
@@ -22,8 +28,8 @@ export interface BotDefinition {
 export type ProgressCallback = (p: number) => Promise<void>
 
 export interface Trainable {
-  train(language: string, progressCallback: ProgressCallback): Promise<NLU.ModelId>
-  load(modelId: NLU.ModelId): Promise<void>
+  train(language: string, progressCallback: ProgressCallback): Promise<string>
+  setModel(language: string, modelId: string): void
   cancelTraining(language: string): Promise<void>
 }
 
@@ -31,9 +37,7 @@ export interface Predictor {
   predict(text: string, anticipatedLanguage?: string): Promise<EventUnderstanding>
 }
 
-export type EventUnderstanding = Omit<IO.EventUnderstanding, 'includedContexts' | 'detectedLanguage'> & {
-  detectedLanguage?: string
-}
+export type EventUnderstanding = Omit<IO.EventUnderstanding, 'includedContexts' | 'ms'>
 
 export interface TrainingState {
   status: SDKNLU.TrainingStatus

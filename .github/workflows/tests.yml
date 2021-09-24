@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@master
       - uses: actions/setup-node@v1
         with:
-          node-version: '12.13.0'
+          node-version: '12.18.1'
       - name: Fetch Node Packages
         run: |
           yarn
@@ -35,7 +35,7 @@ jobs:
       - name: Run Tests
         run: |
           yarn start & sleep 5s &&
-          HEADLESS=true JEST_TIMEOUT=30000 yarn itest
+          HEADLESS=true BP_LICENSE_KEY=${{ secrets.BP_LICENSE_KEY }} JEST_TIMEOUT=30000 yarn itest
       - name: Upload Screenshots
         uses: actions/upload-artifact@master
         if: failure()
